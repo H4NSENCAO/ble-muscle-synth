@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(CSC_IDENTITY_AUTO_DISCOVERY=false npm run electron:build)",
+      "Bash(taskkill /F /IM \"BLE Muscle Synth.exe\")",
+      "Bash(cmd.exe /c \"taskkill /F /IM \\\\\"BLE Muscle Synth.exe\\\\\" 2>nul; rmdir /s /q C:\\\\Users\\\\hanse\\\\ble-muscle-synth\\\\dist\")",
+      "Bash(cmd.exe /c \"rmdir /s /q C:\\\\Users\\\\hanse\\\\ble-muscle-synth\\\\dist\")",
+      "Bash(cmd.exe /c \"rmdir /s /q C:\\\\Users\\\\hanse\\\\ble-muscle-synth\\\\release\")",
+      "Bash(gh auth:*)"
+    ]
+  }
+}
