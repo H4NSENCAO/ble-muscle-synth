@@ -8,7 +8,8 @@
       "Bash(cmd.exe /c \"taskkill /F /IM \\\\\"BLE Muscle Synth.exe\\\\\" 2>nul; rmdir /s /q C:\\\\Users\\\\hanse\\\\ble-muscle-synth\\\\dist\")",
       "Bash(cmd.exe /c \"rmdir /s /q C:\\\\Users\\\\hanse\\\\ble-muscle-synth\\\\dist\")",
       "Bash(cmd.exe /c \"rmdir /s /q C:\\\\Users\\\\hanse\\\\ble-muscle-synth\\\\release\")",
-      "Bash(gh auth:*)"
+      "Bash(gh auth:*)",
+      "Bash(cmd.exe /c \"rmdir /s /q C:\\\\Users\\\\hanse\\\\ble-muscle-synth\\\\release C:\\\\Users\\\\hanse\\\\ble-muscle-synth\\\\dist-web\")"
     ]
   }
 }
