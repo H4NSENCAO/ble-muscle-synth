@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "electron:dev": "electron .",
-    "electron:build": "vite build && electron-builder"
+    "electron:build": "vite build && electron-builder",
+    "electron:rebuild-web": "vite build && xcopy /E /Y dist-web release\\win-unpacked\\resources\\app\\dist-web\\"
   },
   "build": {
     "appId": "com.ble-muscle-synth",
@@ -33,6 +34,7 @@
     }
   },
   "dependencies": {
+    "lucide-react": "^1.8.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },
