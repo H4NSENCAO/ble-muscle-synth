@@ -34,7 +34,8 @@ const SONGS = [
 
 export default function App() {
   const [rawSensorValue, setRawSensorValue] = useState(0);
-  const [history, setHistory] = useState(Array(100).fill(0)); 
+  const historyRef = useRef(new Float32Array(100));
+  const signalCanvasRef = useRef(null);
   
   // Global Thresholds & State
   const [gain, setGain] = useState(1.0);
@@ -78,6 +79,7 @@ export default function App() {
   const portRef = useRef(null);
   const readerRef = useRef(null);
   const keepReadingRef = useRef(true);
+  const latestRawRef = useRef(0); // latest value from serial, read at 60fps
 
   // 3D Visualizer State Refs
   const [engineState, setEngineState] = useState('loading');
@@ -130,13 +132,53 @@ export default function App() {
   const activeColorHex = isFlexing ? COLOR_MAP[dynamicKeys[activeKeyIndex].colorKey].hex : '#94a3b8';
 
   useEffect(() => {
-    setHistory(prev => [...prev.slice(1), processedValue]);
+    const buf = historyRef.current;
+    buf.copyWithin(0, 1);
+    buf[99] = processedValue;
     if (isCalibrating) calDataRef.current.push(rawSensorValue);
   }, [rawSensorValue, processedValue, isCalibrating]);
 
   useEffect(() => {
     latestSignalRef.current = { value: processedValue, color: activeColorHex, isFlexing };
   }, [processedValue, activeColorHex, isFlexing]);
+
+  // Draw signal history on canvas at 60fps without React re-renders
+  useEffect(() => {
+    let rafId;
+    const canvas = signalCanvasRef.current;
+    if (!canvas) return;
+
+    const draw = () => {
+      const w = canvas.offsetWidth;
+      const h = canvas.offsetHeight;
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, w, h);
+
+      const buf = historyRef.current;
+      ctx.beginPath();
+      for (let i = 0; i < buf.length; i++) {
+        const x = (i / (buf.length - 1)) * w;
+        const y = h - (buf[i] / SENSOR_MAX) * h;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      const { isFlexing: flex, color } = latestSignalRef.current;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = flex ? color : '#ffffff';
+      ctx.shadowBlur = 8;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      rafId = requestAnimationFrame(draw);
+    };
+    rafId = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(rafId);
+  }, []);
 
   useEffect(() => {
     if (!document.getElementById('tailwind-cdn')) {
@@ -387,6 +429,10 @@ export default function App() {
         dirLight.position.set(5, 5, 5);
         scene.add(dirLight);
 
+        // Pre-allocate to avoid GC pressure every frame
+        const outerScaleVec = new THREE.Vector3(1, 1, 1);
+        const innerScaleVec = new THREE.Vector3(1, 1, 1);
+
         const animate = () => {
           if (!isMounted) return;
           animationId = requestAnimationFrame(animate);
@@ -402,9 +448,11 @@ export default function App() {
 
           const targetScaleOuter = 1 + norm * 0.5;
           const targetScaleInner = 1 + norm * 1.2;
-          
-          meshOuter.scale.lerp(new THREE.Vector3(targetScaleOuter, targetScaleOuter, targetScaleOuter), 0.1);
-          meshInner.scale.lerp(new THREE.Vector3(targetScaleInner, targetScaleInner, targetScaleInner), 0.1);
+
+          outerScaleVec.set(targetScaleOuter, targetScaleOuter, targetScaleOuter);
+          innerScaleVec.set(targetScaleInner, targetScaleInner, targetScaleInner);
+          meshOuter.scale.lerp(outerScaleVec, 0.1);
+          meshInner.scale.lerp(innerScaleVec, 0.1);
 
           if (color) {
             matOuter.color.setStyle(color);
@@ -496,10 +544,11 @@ export default function App() {
         if (done) break;
         buffer += value;
         const lines = buffer.split('\n');
-        buffer = lines.pop(); 
-        for (const line of lines) {
-          const match = line.match(/Sensor:\s*(\d+)/);
-          if (match) setRawSensorValue(parseInt(match[1], 10));
+        buffer = lines.pop();
+        // Only use the last complete line in the batch to stay current
+        for (let i = lines.length - 1; i >= 0; i--) {
+          const match = lines[i].match(/Sensor:\s*(\d+)/);
+          if (match) { latestRawRef.current = parseInt(match[1], 10); break; }
         }
       } catch (error) {
         console.error('Serial Read Error:', error);
@@ -512,7 +561,7 @@ export default function App() {
     setErrorMessage('');
     try {
       const port = await navigator.serial.requestPort();
-      await port.open({ baudRate: 9600 });
+      await port.open({ baudRate: 9600, bufferSize: 64 });
       portRef.current = port;
       
       setIsConnected(true);
@@ -525,10 +574,19 @@ export default function App() {
       readerRef.current = reader;
 
       readLoop(reader);
+
+      // RAF loop: flush serial ref to React state at 60fps
+      const rafLoop = () => {
+        if (!keepReadingRef.current) return;
+        setRawSensorValue(latestRawRef.current);
+        requestAnimationFrame(rafLoop);
+      };
+      requestAnimationFrame(rafLoop);
+
     } catch (error) {
       console.error('Serial Connection failed:', error);
       setIsConnected(false);
-      
+
       if (error.name === 'SecurityError' || error.message.includes('permissions policy')) {
         setErrorMessage("Oops! USB isn't allowed here right now. Copy this code to a local project to use real hardware!");
       } else if (error.name === 'NotFoundError') {
@@ -903,16 +961,12 @@ export default function App() {
                     );
                   })}
                   
-                  {/* Thick glowing signal line */}
-                  <polyline 
-                    points={history.map((val, i) => `${(i / 99) * 100},${100 - (val / SENSOR_MAX) * 100}`).join(' ')} 
-                    fill="none" stroke="#ffffff" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round"
-                    style={{ filter: `drop-shadow(0px 0px 4px ${isFlexing ? activeColorHex : '#ffffff'})` }}
-                  />
+                  {/* Signal line drawn on canvas overlay to avoid SVG re-renders */}
                   
                   <line x1="0" y1={100 - (emgCeil/SENSOR_MAX)*100} x2="100" y2={100 - (emgCeil/SENSOR_MAX)*100} stroke="#f43f5e" strokeWidth="1" strokeDasharray="4" />
                   <line x1="0" y1={100 - (emgFloor/SENSOR_MAX)*100} x2="100" y2={100 - (emgFloor/SENSOR_MAX)*100} stroke="#06b6d4" strokeWidth="1" strokeDasharray="4" />
                 </svg>
+                <canvas ref={signalCanvasRef} className="absolute inset-0 w-full h-full" style={{ pointerEvents: 'none' }} />
               </div>
 
               {/* 3D Geometric Radial Visualizer */}
