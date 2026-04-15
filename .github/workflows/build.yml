@@ -38,4 +38,4 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: BLE-Muscle-Synth-Mac
-          path: release/mac*/*.dmg
+          path: release/
