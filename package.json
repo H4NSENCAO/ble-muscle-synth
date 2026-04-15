@@ -31,7 +31,8 @@
     "mac": {
       "target": "dmg",
       "category": "public.app-category.utilities"
-    }
+    },
+    "publish": "never"
   },
   "dependencies": {
     "lucide-react": "^1.8.0",

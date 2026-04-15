@@ -35,7 +35,9 @@ jobs:
       - run: npm run electron:build
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ELECTRON_BUILDER_PUBLISH: never
       - uses: actions/upload-artifact@v4
         with:
           name: BLE-Muscle-Synth-Mac
-          path: release/mac*/
+          path: release/mac*/*.dmg
