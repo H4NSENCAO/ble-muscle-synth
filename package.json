@@ -32,7 +32,7 @@
       "target": "dmg",
       "category": "public.app-category.utilities"
     },
-    "publish": "never"
+    "publish": null
   },
   "dependencies": {
     "lucide-react": "^1.8.0",
