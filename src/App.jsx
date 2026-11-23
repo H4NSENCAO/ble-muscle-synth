@@ -748,7 +748,7 @@ export default function App() {
                 </button>
                 <div className={`text-xs font-bold text-center ${calibration ? 'text-emerald-600' : 'text-amber-600'}`}>
                   {calibration
-                    ? `${calibration.quality === 'great' ? '✅' : '👍'} Calibrated · rest ${calibration.rest.mean} · squeeze ${calibration.flexPeak}`
+                    ? `${calibration.quality === 'great' ? '✅' : '👍'} Calibrated · rest ${calibration.rest.mean} · push ${calibration.flexPeak}`
                     : '⚠️ Not calibrated yet'}
                 </div>
               </div>

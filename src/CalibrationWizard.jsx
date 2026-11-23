@@ -13,7 +13,7 @@ const STEPS = [
   { id: 'data', label: 'Data', emoji: '📡' },
   { id: 'sensor', label: 'Sensor', emoji: '🩹' },
   { id: 'rest', label: 'Relax', emoji: '😴' },
-  { id: 'flex', label: 'Squeeze', emoji: '💪' },
+  { id: 'flex', label: 'Push', emoji: '💪' },
   { id: 'test', label: 'Test', emoji: '🎹' },
 ];
 const S = { CONNECT: 0, DATA: 1, SENSOR: 2, REST: 3, FLEX: 4, TEST: 5, DONE: 6 };
@@ -132,7 +132,7 @@ export default function CalibrationWizard({
   }, [step, visit, statsRef, bufferRef]);
   const liveCheck = live && live.visit === visit ? live : { status: 'checking' };
 
-  // Timed captures for the Relax and Squeeze steps.
+  // Timed captures for the Relax and Push steps.
   useEffect(() => {
     if (!captureKind) return;
     const { countdownMs, captureMs } = CAPTURE[captureKind];
@@ -523,15 +523,15 @@ function DataStep({ check, bufferRef, rawValue, isSimulating }) {
 
 function SensorStep({ check, bufferRef, rawValue }) {
   let card;
-  if (check.status === 'checking') card = <StatusCard status="checking" title="Watching the signal…" detail="Keep your arm relaxed and still." />;
+  if (check.status === 'checking') card = <StatusCard status="checking" title="Watching the signal…" detail="Keep your neck relaxed and your head still." />;
   else if (check.status === 'pass') card = <StatusCard status="pass" title="The sensor signal looks healthy" detail="Calm and steady while you rest. Nice!" />;
   else card = <StatusCard status={check.status} issue={check.issue} />;
 
   return (
     <div className="grid md:grid-cols-5 gap-6">
       <div className="md:col-span-3 space-y-4">
-        <StepIntro emoji="🩹" title="Check the sensor on your arm">
-          Stick the 3 pads on like the picture, then rest your arm on the table and keep still.
+        <StepIntro emoji="🩹" title="Check the sensor on your neck">
+          Stick the 3 pads on like the picture. To find the neck muscle, turn your head to one side: it pops out on the other side of your neck. Then look straight ahead and keep still.
         </StepIntro>
         {card}
       </div>
@@ -546,7 +546,7 @@ function SensorStep({ check, bufferRef, rawValue }) {
             ['Range', check.stats ? `${Math.round(check.stats.min)}–${Math.round(check.stats.max)}` : '–'],
           ]}
         />
-        <ArmDiagram compact />
+        <NeckDiagram compact />
       </div>
     </div>
   );
@@ -562,7 +562,7 @@ function CaptureStep({ kind, capture, result, rest, onStart, bufferRef, rawValue
     const left = Math.max(1, Math.ceil((cfg.countdownMs - capture.t) / 1000));
     prompt = (
       <div className="rounded-3xl bg-sky-50 border-4 border-sky-200 p-6 text-center">
-        <div className="text-sm font-black text-sky-500 tracking-widest uppercase">{isRest ? 'Put your arm down and relax…' : 'Get ready to squeeze…'}</div>
+        <div className="text-sm font-black text-sky-500 tracking-widest uppercase">{isRest ? 'Look ahead and relax…' : 'Hand on your forehead, get ready…'}</div>
         <div className="text-7xl font-black text-sky-600 tabular-nums mt-1">{left}</div>
       </div>
     );
@@ -571,7 +571,7 @@ function CaptureStep({ kind, capture, result, rest, onStart, bufferRef, rawValue
     prompt = (
       <div className={`rounded-3xl border-4 p-6 text-center ${isRest ? 'bg-cyan-50 border-cyan-200' : 'bg-rose-50 border-rose-300'}`}>
         <div className={`text-4xl font-black ${isRest ? 'text-cyan-600' : 'text-rose-500 animate-pulse'}`}>
-          {isRest ? 'Stay relaxed… 😴' : 'SQUEEZE! 💪'}
+          {isRest ? 'Stay relaxed… 😴' : 'PUSH! 💪'}
         </div>
         <div className="mt-4 h-4 bg-white rounded-full overflow-hidden border-2 border-white shadow-inner">
           <div className={`h-full rounded-full ${isRest ? 'bg-cyan-400' : 'bg-rose-400'}`} style={{ width: `${progress * 100}%` }} />
@@ -605,25 +605,25 @@ function CaptureStep({ kind, capture, result, rest, onStart, bufferRef, rawValue
     } else {
       const detail = `Your signal jumped from ${Math.round(rest.stats.mean)} to ${Math.round(result.peak)}.`;
       card = result.status === 'pass'
-        ? <StatusCard status="pass" title="Great squeeze!" detail={detail} />
+        ? <StatusCard status="pass" title="Great push!" detail={detail} />
         : <StatusCard status={result.status} issue={result.issue} detail={result.issue === 'no-samples' ? undefined : `${ISSUES[result.issue].detail} ${detail}`} />;
     }
   }
 
   const markers = [];
   if (rest) markers.push({ value: rest.stats.mean, color: '#22d3ee', label: 'rest', align: 'left' });
-  if (!isRest && result && !running) markers.push({ value: result.peak, color: '#fb7185', label: 'squeeze' });
+  if (!isRest && result && !running) markers.push({ value: result.peak, color: '#fb7185', label: 'push' });
 
   return (
     <div className="grid md:grid-cols-5 gap-6">
       <div className="md:col-span-3 space-y-4">
         {isRest ? (
-          <StepIntro emoji="😴" title="Relax your arm">
-            Open your hand and let your arm go floppy on the table. We'll measure your resting signal.
+          <StepIntro emoji="😴" title="Relax your neck">
+            Sit up tall, look straight ahead and let your shoulders drop. Try not to talk or swallow. We'll measure your resting signal.
           </StepIntro>
         ) : (
-          <StepIntro emoji="💪" title="Squeeze as hard as you can!">
-            Make a tight fist and hold it for 3 seconds when you see <b>SQUEEZE!</b>
+          <StepIntro emoji="💪" title="Push your head into your hand!">
+            Put your hand on your forehead. When you see <b>PUSH!</b>, press your head forward into your hand without letting it move, and hold for 3 seconds. Push firmly, but don't strain.
           </StepIntro>
         )}
         {card}
@@ -631,7 +631,7 @@ function CaptureStep({ kind, capture, result, rest, onStart, bufferRef, rawValue
       </div>
       <div className="md:col-span-2 space-y-3">
         <LivePanel bufferRef={bufferRef} rawValue={rawValue} markers={markers} />
-        {!isRest && result?.status === 'fail' && <ArmDiagram compact />}
+        {!isRest && result?.status === 'fail' && <NeckDiagram compact />}
       </div>
     </div>
   );
@@ -640,8 +640,8 @@ function CaptureStep({ kind, capture, result, rest, onStart, bufferRef, rawValue
 function TestStep({ goals, keys, noteIntervals, processedValue, keyIndex, emgFloor, onEasier }) {
   const items = [
     { done: goals.quiet, emoji: '😴', text: 'Relax: no notes play' },
-    { done: goals.low, emoji: '🙂', text: 'Squeeze gently: hold a low note (red, orange or yellow)' },
-    { done: goals.top, emoji: '💪', text: 'Squeeze hard: reach the top note (pink)' },
+    { done: goals.low, emoji: '🙂', text: 'Push gently: hold a low note (red, orange or yellow)' },
+    { done: goals.top, emoji: '💪', text: 'Push hard: reach the top note (pink)' },
   ];
   const all = items.every((i) => i.done);
   const active = keyIndex >= 0 ? keys[keyIndex] : null;
@@ -700,7 +700,7 @@ function DoneStep({ results, portLabel, emgFloor, emgCeil }) {
     { emoji: '📡', label: 'Data', value: data?.rate ? `${Math.round(data.rate)} readings / second` : '—', status: data?.status },
     { emoji: '🩹', label: 'Sensor', value: sensor?.skipped ? 'Skipped' : sensor?.status === 'pass' ? 'Healthy signal' : sensor?.issue ? ISSUES[sensor.issue].title : '—', status: sensor?.status },
     { emoji: '😴', label: 'Resting', value: rest ? `${Math.round(rest.stats.mean)} ± ${Math.round(rest.stats.std)}` : '—', status: rest?.status },
-    { emoji: '💪', label: 'Squeeze', value: flex ? `${Math.round(flex.peak)}` : '—', status: flex?.status },
+    { emoji: '💪', label: 'Push', value: flex ? `${Math.round(flex.peak)}` : '—', status: flex?.status },
     { emoji: '🎹', label: 'Test', value: test ? `${Object.values(test.goals).filter(Boolean).length} of 3 checks` : '—', status: test?.status },
   ];
   const allGood = rows.every((r) => r.status === 'pass');
@@ -939,38 +939,124 @@ function WiringDiagram({ connected }) {
   );
 }
 
-// Where the electrodes go on the forearm.
-function ArmDiagram({ compact = false }) {
+// Where the electrodes go: a front close-up of the neck, from the chin down.
+// Pads 1 + 2 sit in a line on the lower half of the sternocleidomastoid, the
+// band of muscle running from behind the ear to the top of the breastbone.
+// Pad 3 (reference) goes on the collarbone, out toward the shoulder.
+const NECK_BODY = 'M 79 0 L 79.5 22 C 80 34, 80 42, 78 50 C 74 58, 60 62, 46 66 C 36 69, 26 71, 19 74 C 12 77, 8 84, 6 94 C 5 102, 4.5 112, 4.5 120 L 215.5 120 C 215.5 112, 215 102, 214 94 C 212 84, 208 77, 201 74 C 194 71, 184 69, 174 66 C 160 62, 146 58, 142 50 C 140 42, 140 34, 140.5 22 L 141 0 Z';
+const NECK_FACE = 'M 72 -2 C 73 4, 74 9, 76 12 C 82 19, 92 25, 100 28.6 C 104 30.4, 116 30.4, 120 28.6 C 128 25, 138 19, 144 12 C 146 9, 147 4, 148 -2 Z';
+// Each muscle: narrow behind the jaw, widest mid-neck, splitting into a breastbone head and a collarbone head.
+const NECK_SCM_LEFT = 'M 85 14 C 89 28, 95 42, 99.5 54 C 102 61, 104 67, 106 72.5 L 102.5 73.6 C 101.5 70, 100 67, 98.5 66 C 98 69, 97.5 72, 97 74.6 L 87.5 75.6 C 86.5 66, 84 56, 81.5 46 C 79.5 36, 78.5 26, 78 14 Z';
+const NECK_SCM_RIGHT = 'M 135 14 C 131 28, 125 42, 120.5 54 C 118 61, 116 67, 114 72.5 L 117.5 73.6 C 118.5 70, 120 67, 121.5 66 C 122 69, 122.5 72, 123 74.6 L 132.5 75.6 C 133.5 66, 136 56, 138.5 46 C 140.5 36, 141.5 26, 142 14 Z';
+const NECK_SCM_FRONT_EDGES = 'M 85 14 C 89 28, 95 42, 99.5 54 C 102 61, 104 67, 106 72.5 M 135 14 C 131 28, 125 42, 120.5 54 C 118 61, 116 67, 114 72.5';
+const NECK_SCM_BACK_EDGES = 'M 87.5 75.6 C 86.5 66, 84 56, 81.5 46 C 79.5 36, 78.5 26, 78 14 M 132.5 75.6 C 133.5 66, 136 56, 138.5 46 C 140.5 36, 141.5 26, 142 14';
+const NECK_SCM_RIDGES = 'M 81.5 16 C 85 30, 90.5 46, 95 60 M 138.5 16 C 135 30, 129.5 46, 125 60';
+const NECK_SCM_FIBERS = 'M 137 15 C 133.5 30, 127 46, 122.5 57 C 120 63, 118 68, 116 73 M 139 15 C 136.5 30, 131 47, 127 60 C 125.5 65, 124.8 70, 125.5 75 M 141 15 C 139.5 30, 135.5 48, 132 62 C 131 67, 130 71, 129.5 75.2';
+const NECK_CLAVICLES = 'M 103 74 C 90 78, 70 75, 55 72 C 42 70, 32 71, 27 74 M 117 74 C 130 78, 150 75, 165 72 C 178 70, 188 71, 193 74';
+const NECK_PADS = [
+  { n: 1, x: 131, y: 46, snap: '#ef4444', numX: 118.5, numY: 49.5 },
+  { n: 2, x: 126.2, y: 62, snap: '#ef4444', numX: 113.7, numY: 65.5 },
+  { n: 3, x: 165, y: 74, snap: '#1e293b', numX: 165, numY: 91 },
+];
+
+function NeckDiagram({ compact = false }) {
+  const shade = '#b9785a';
   return (
-    <div className={`bg-orange-50/60 border-4 border-orange-100 rounded-3xl flex justify-center ${compact ? 'p-1.5' : 'p-3'}`}>
-      <svg viewBox="0 0 340 168" className={`w-full ${compact ? 'max-h-36' : 'h-auto'}`} role="img" aria-label="Electrode placement: two pads on the forearm muscle bulge in a line, reference pad on the elbow bone">
-        {/* forearm */}
-        <path d="M 28 52 C 90 38, 190 50, 252 60 L 252 104 C 190 112, 90 128, 28 116 C 12 104, 12 64, 28 52 Z" fill="#fde2c8" stroke="#e8b48a" strokeWidth="3" />
-        {/* fist */}
-        <rect x="244" y="54" width="64" height="58" rx="22" fill="#fde2c8" stroke="#e8b48a" strokeWidth="3" />
-        <ellipse cx="262" cy="57" rx="18" ry="8" fill="#fde2c8" stroke="#e8b48a" strokeWidth="3" />
-        <path d="M 290 66 q 8 4 0 10 M 290 80 q 8 4 0 10 M 290 94 q 8 4 0 10" fill="none" stroke="#e8b48a" strokeWidth="2.5" strokeLinecap="round" />
-        {/* muscle belly */}
-        <ellipse cx="113" cy="84" rx="60" ry="25" fill="#fb7185" fillOpacity="0.22" stroke="#f43f5e" strokeWidth="2" strokeDasharray="5 4" />
-        {/* signal electrodes, in a line along the arm */}
-        {[94, 132].map((cx, i) => (
-          <g key={cx}>
-            <circle cx={cx} cy="84" r="13" fill="white" stroke="#94a3b8" strokeWidth="2.5" />
-            <circle cx={cx} cy="84" r="5" fill="#ef4444" />
-            <text x={cx + (i ? 9 : -9)} y="104" textAnchor="middle" fontSize="11" fontWeight="900" fill="#be123c">{i + 1}</text>
+    <div className="bg-orange-50/60 border-4 border-orange-100 rounded-3xl flex justify-center overflow-hidden">
+      <svg viewBox="0 0 340 120" className={`block w-full ${compact ? 'max-h-40' : 'h-auto'}`} role="img" aria-label="Electrode placement: two pads in a line on the muscle down the side of the neck, reference pad on the collarbone toward the shoulder">
+        <defs>
+          <radialGradient id="nd-body" cx="110" cy="96" r="125" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stopColor="#f7d6be" />
+            <stop offset="0.6" stopColor="#efc2a1" />
+            <stop offset="1" stopColor="#dfa582" />
+          </radialGradient>
+          <radialGradient id="nd-face" cx="110" cy="16" r="40" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stopColor="#f9ddc9" />
+            <stop offset="1" stopColor="#edbe9d" />
+          </radialGradient>
+          <radialGradient id="nd-foam">
+            <stop offset="0.55" stopColor="#ffffff" />
+            <stop offset="1" stopColor="#e5e7eb" />
+          </radialGradient>
+          <linearGradient id="nd-fade" x1="0" y1="0" x2="0" y2="14" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stopColor="#fff" stopOpacity="0" />
+            <stop offset="1" stopColor="#fff" />
+          </linearGradient>
+          <mask id="nd-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="340" height="120">
+            <rect width="340" height="120" fill="url(#nd-fade)" />
+          </mask>
+          <clipPath id="nd-clip"><path d={NECK_BODY} /></clipPath>
+          <filter id="nd-blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.5" /></filter>
+          <filter id="nd-blur-sm" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="0.9" /></filter>
+          <filter id="nd-pad-shadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="0" dy="1" stdDeviation="0.8" floodColor="#7a4528" floodOpacity="0.4" />
+          </filter>
+        </defs>
+
+        {/* neck and shoulders, fading out at the chin */}
+        <g mask="url(#nd-mask)">
+          <path d={NECK_BODY} fill="url(#nd-body)" />
+          <g clipPath="url(#nd-clip)">
+            {/* soft shading: sides of the neck, under the jaw, shoulders */}
+            <ellipse cx="81" cy="44" rx="7" ry="26" fill={shade} opacity="0.22" filter="url(#nd-blur)" />
+            <ellipse cx="139" cy="44" rx="7" ry="26" fill={shade} opacity="0.22" filter="url(#nd-blur)" />
+            <ellipse cx="110" cy="27" rx="34" ry="9" fill="#a8664a" opacity="0.35" filter="url(#nd-blur)" />
+            <ellipse cx="8" cy="104" rx="10" ry="30" fill={shade} opacity="0.25" filter="url(#nd-blur)" />
+            <ellipse cx="212" cy="104" rx="10" ry="30" fill={shade} opacity="0.25" filter="url(#nd-blur)" />
+            <ellipse cx="48" cy="71" rx="24" ry="5" fill="#fde8d8" opacity="0.55" filter="url(#nd-blur)" />
+            <ellipse cx="172" cy="71" rx="24" ry="5" fill="#fde8d8" opacity="0.55" filter="url(#nd-blur)" />
+            <path d="M 31 98 C 33 106, 34 114, 34 120 M 189 98 C 187 106, 186 114, 186 120" fill="none" stroke={shade} strokeOpacity="0.35" strokeWidth="1.2" filter="url(#nd-blur-sm)" />
+            {/* neck muscles: raised bands from behind the ears to the breastbone */}
+            <path d={NECK_SCM_LEFT} fill="#f8d8c0" opacity="0.6" />
+            <path d={NECK_SCM_FRONT_EDGES} fill="none" stroke={shade} strokeOpacity="0.4" strokeWidth="2" filter="url(#nd-blur-sm)" />
+            <path d={NECK_SCM_BACK_EDGES} fill="none" stroke={shade} strokeOpacity="0.25" strokeWidth="1.6" filter="url(#nd-blur-sm)" />
+            <path d={NECK_SCM_RIDGES} fill="none" stroke="#fde6d6" strokeOpacity="0.6" strokeWidth="2.2" strokeLinecap="round" filter="url(#nd-blur-sm)" />
+            {/* hollows above the collarbones, behind the neck muscles */}
+            <ellipse cx="70" cy="66.5" rx="10" ry="3.5" transform="rotate(12 70 66.5)" fill="#a8664a" opacity="0.3" filter="url(#nd-blur-sm)" />
+            <ellipse cx="150" cy="66.5" rx="10" ry="3.5" transform="rotate(-12 150 66.5)" fill="#a8664a" opacity="0.3" filter="url(#nd-blur-sm)" />
+            {/* collarbones and the notch between them */}
+            <path d={NECK_CLAVICLES} fill="none" stroke={shade} strokeOpacity="0.4" strokeWidth="2.2" transform="translate(0 2.2)" filter="url(#nd-blur-sm)" />
+            <path d={NECK_CLAVICLES} fill="none" stroke="#fde6d6" strokeOpacity="0.75" strokeWidth="2.4" strokeLinecap="round" filter="url(#nd-blur-sm)" />
+            <ellipse cx="110" cy="73" rx="6" ry="3" fill="#a8664a" opacity="0.4" filter="url(#nd-blur-sm)" />
+            {/* the muscle to use */}
+            <path d={NECK_SCM_RIGHT} fill="#f43f5e" fillOpacity="0.2" />
+            <path d={NECK_SCM_FIBERS} fill="none" stroke="#e11d48" strokeOpacity="0.3" strokeWidth="0.6" />
+            <path d={NECK_SCM_RIGHT} fill="none" stroke="#e11d48" strokeWidth="1.2" strokeDasharray="3.5 2.5" />
+          </g>
+          <path d={NECK_BODY} fill="none" stroke="#c4876a" strokeWidth="1" />
+          {/* chin and jaw */}
+          <path d={NECK_FACE} fill="url(#nd-face)" stroke="#c4876a" strokeWidth="1" />
+          <ellipse cx="110" cy="22" rx="10" ry="4.5" fill="#fff" opacity="0.25" filter="url(#nd-blur-sm)" />
+        </g>
+
+        {/* electrode pads: foam disc with a snap; red = signal, black = reference */}
+        {NECK_PADS.map(({ n, x, y, snap }) => (
+          <g key={n}>
+            <circle cx={x} cy={y} r="7.5" fill="url(#nd-foam)" stroke="#cbd5e1" strokeWidth="0.6" filter="url(#nd-pad-shadow)" />
+            <circle cx={x} cy={y} r="4.6" fill="none" stroke="#e2e8f0" strokeWidth="0.6" />
+            <circle cx={x} cy={y} r="2.8" fill={snap} />
+            <circle cx={x - 0.9} cy={y - 0.9} r="1" fill="#fff" opacity="0.6" />
           </g>
         ))}
-        {/* reference electrode on the elbow */}
-        <circle cx="38" cy="86" r="13" fill="white" stroke="#94a3b8" strokeWidth="2.5" />
-        <circle cx="38" cy="86" r="5" fill="#1e293b" />
-        <text x="38" y="112" textAnchor="middle" fontSize="11" fontWeight="900" fill="#334155">3</text>
+        <g fontSize="9.5" fontWeight="900" textAnchor="middle" stroke="#fff" strokeOpacity="0.8" strokeWidth="2.4" strokeLinejoin="round" paintOrder="stroke">
+          {NECK_PADS.map(({ n, numX, numY }) => (
+            <text key={n} x={numX} y={numY} fill={n === 3 ? '#334155' : '#be123c'}>{n}</text>
+          ))}
+        </g>
+
         {/* labels */}
-        <line x1="113" y1="28" x2="113" y2="58" stroke="#f43f5e" strokeWidth="2" />
-        <text x="8" y="20" fontSize="13" fontWeight="900" fill="#be123c">Pads 1 + 2: on the muscle bulge, in a line</text>
-        <line x1="38" y1="118" x2="38" y2="140" stroke="#475569" strokeWidth="2" />
-        <text x="18" y="156" fontSize="13" fontWeight="900" fill="#334155">Pad 3: reference on the elbow bone</text>
-        <text x="276" y="132" textAnchor="middle" fontSize="11" fontWeight="800" fill="#b45309">hand</text>
-        <text x="24" y="42" textAnchor="middle" fontSize="11" fontWeight="800" fill="#b45309">elbow</text>
+        <line x1="138.5" y1="45" x2="221" y2="33" stroke="#f43f5e" strokeWidth="1.2" />
+        <text fontSize="11" fontWeight="900" fill="#be123c">
+          <tspan x="226" y="24">Pads 1 + 2:</tspan>
+          <tspan x="226" dy="13">in a line on the</tspan>
+          <tspan x="226" dy="13">neck muscle</tspan>
+        </text>
+        <line x1="172.5" y1="75" x2="221" y2="90" stroke="#475569" strokeWidth="1.2" />
+        <text fontSize="11" fontWeight="900" fill="#334155">
+          <tspan x="226" y="81">Pad 3:</tspan>
+          <tspan x="226" dy="13">reference on</tspan>
+          <tspan x="226" dy="13">the collarbone</tspan>
+        </text>
       </svg>
     </div>
   );

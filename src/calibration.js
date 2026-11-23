@@ -228,7 +228,7 @@ export const ISSUES = {
   // Step 3: sensor hook-up
   silent: {
     title: 'The sensor reads zero',
-    detail: "That's OK if the number jumps when you squeeze. We'll check that in the Squeeze step.",
+    detail: "That's OK if the number jumps when you push. We'll check that in the Push step.",
     tips: [
       "Check the sensor's power wires: + to 5V, - to GND.",
       'Check the signal wire (SIG) goes to pin A0.',
@@ -246,11 +246,11 @@ export const ISSUES = {
   },
   unstable: {
     title: 'The signal is jumping around a lot',
-    detail: 'A relaxed arm should give a calm, steady reading.',
+    detail: 'A relaxed neck should give a calm, steady reading.',
     tips: [
       'Press each electrode pad down firmly.',
-      'Put the reference electrode (usually the black one) on the bony part of your elbow.',
-      'Rest your arm on the table and keep it still.',
+      'Put the reference electrode (usually the black one) on your collarbone, out near your shoulder.',
+      'Look straight ahead and keep your head still. Try not to talk or swallow.',
       'Move away from chargers and power cables.',
     ],
   },
@@ -263,11 +263,11 @@ export const ISSUES = {
   },
   noisy: {
     title: 'Your resting signal is too wiggly',
-    detail: "We can't tell resting apart from squeezing yet.",
+    detail: "We can't tell resting apart from pushing yet.",
     tips: [
-      'Open your hand and let your arm go floppy on the table.',
+      'Sit up tall, look straight ahead and let your shoulders drop. Try not to talk or swallow.',
       'Press each electrode pad down firmly.',
-      'Put the reference electrode on the bony part of your elbow.',
+      'Put the reference electrode on your collarbone, out near your shoulder.',
       'Move away from chargers and power cables.',
     ],
   },
@@ -280,24 +280,24 @@ export const ISSUES = {
     title: 'Your resting level is high',
     detail: 'Your muscle may not be fully relaxed.',
     tips: [
-      'Open your hand and let your arm go floppy.',
+      'Let your shoulders drop, unclench your teeth and keep your head still.',
       "If it stays high, turn the sensor's gain knob down a little.",
     ],
   },
 
-  // Step 5: flex capture
+  // Step 5: flex capture (push head forward into hand)
   'no-response': {
-    title: "We can't see your muscle squeezing",
-    detail: 'The reading barely changed when you squeezed.',
+    title: "We can't see your neck muscle working",
+    detail: 'The reading barely changed when you pushed.',
     tips: [
-      'Move pads 1 and 2 onto the fattest part of your forearm muscle (squeeze to feel where it bulges), in a line about 2 cm apart.',
-      'Put pad 3 (reference) on the bony part of your elbow.',
+      'Move pads 1 and 2 onto the lower half of the neck muscle (turn your head to one side: it pops out on the other side), in a line about 2 cm apart.',
+      'Put pad 3 (reference) on your collarbone, out near your shoulder.',
       'Check the signal wire (SIG) goes to pin A0.',
-      "Turn the sensor's gain knob up a little, and make a really tight fist!",
+      "Turn the sensor's gain knob up a little, and push your head firmly into your hand!",
     ],
   },
   saturated: {
-    title: 'Your squeeze maxed out the sensor',
+    title: 'Your push maxed out the sensor',
     detail: "Super strong! We'll still use it.",
     tips: ["For finer control, turn the sensor's gain knob down a little and redo this step."],
   },
@@ -305,7 +305,7 @@ export const ISSUES = {
     title: 'The signal is a bit weak',
     detail: "We'll turn up the boost to make up for it.",
     tips: [
-      'Move the signal electrodes onto the middle of the muscle for a stronger signal.',
+      'Move pads 1 and 2 so they sit right on the lower half of the neck muscle, for a stronger signal.',
       "Or turn the sensor's gain knob up a little.",
     ],
   },
@@ -342,7 +342,7 @@ export function assessDataStream({ now, elapsedMs, stats, buffer }) {
   return { status: 'fail', issue: 'format', rate: 0 };
 }
 
-// Step 3: with the arm relaxed, does the signal look like a sensor on skin?
+// Step 3: with the neck relaxed, does the signal look like a sensor on skin?
 export function assessHookup(values) {
   const s = summarize(values);
   if (s.n < 8) return { status: 'checking', stats: s };
@@ -363,7 +363,7 @@ export function assessRest(values) {
   return { status: 'pass', stats: s };
 }
 
-// Step 5: full squeeze. Uses the 95th percentile as the peak so the ramp-up
+// Step 5: full push. Uses the 95th percentile as the peak so the ramp-up
 // and any single spike don't count.
 export function assessFlex(values, rest) {
   const s = summarize(values);
@@ -382,8 +382,8 @@ const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 
 // Turn the rest/flex measurements into the app's settings.
 //   noiseFloor: subtracted from the raw reading (rest mean + 2 std)
-//   gain:       a full squeeze lands at ~80% of the display range
-//   emgCeil:    the top note at ~85% of a full squeeze, so it's reachable without straining
+//   gain:       a full push lands at ~80% of the display range
+//   emgCeil:    the top note at ~85% of a full push, so it's reachable without straining
 //   emgFloor:   notes start ~12% of the way up, above any leftover rest noise
 export function computeSettings(rest, flexPeak) {
   const noiseFloor = Math.round(rest.mean + 2 * rest.std);
@@ -411,7 +411,7 @@ export function simulateReading(intent, time, state) {
   }
   let target = SIM_TARGETS[intent] ?? SIM_TARGETS.rest;
   if (intent === 'sweep') {
-    // relax -> gentle squeeze -> hard squeeze -> relax, every 6 seconds
+    // relax -> gentle push -> hard push -> relax, every 6 seconds
     const phase = time % 6;
     target = phase < 1.5 ? 55 : phase < 3 ? 230 : phase < 4.5 ? 800 : 55;
   }
