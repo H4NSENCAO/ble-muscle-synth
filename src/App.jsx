@@ -1,7 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Activity, Volume2, Usb, Power, AlertCircle, XCircle, Hexagon, Crosshair, Timer, Gamepad2, Sparkles, Music, Loader2, PlayCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Activity, Volume2, Usb, Power, AlertCircle, XCircle, Hexagon, Compass, Sparkles, Music, Loader2, PlayCircle } from 'lucide-react';
+import CalibrationWizard from './CalibrationWizard';
+import {
+  SENSOR_MAX, ISSUES, SampleBuffer, createSerialStats, classifyConnectionError, describePort, simulateReading,
+} from './calibration';
 
-const SENSOR_MAX = 1024;
+const SERIAL_SUPPORTED = typeof navigator !== 'undefined' && 'serial' in navigator;
 
 // Real Instrument Soundfont Mapping
 const REAL_INSTRUMENTS = [
@@ -63,23 +67,34 @@ export default function App() {
   const [matchEffect, setMatchEffect] = useState(false);
   const isCooldownRef = useRef(false);
 
-  // Calibration State
-  const [isCalibrating, setIsCalibrating] = useState(false);
+  // Calibration State (the Setup Wizard opens on launch; it can be skipped)
   const [noiseFloor, setNoiseFloor] = useState(0);
-  const calDataRef = useRef([]);
+  const [showWizard, setShowWizard] = useState(true);
+  const [calibration, setCalibration] = useState(null);
 
   // Connection State
   const [isConnected, setIsConnected] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(false);
-  const [isSupported, setIsSupported] = useState(true);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [connectIssue, setConnectIssue] = useState(null); // { kind, message } from classifyConnectionError
+  const [portLabel, setPortLabel] = useState('');
 
   // Serial Comm Refs
   const portRef = useRef(null);
   const readerRef = useRef(null);
+  const pipeDoneRef = useRef(null);
   const keepReadingRef = useRef(true);
   const latestRawRef = useRef(0); // latest value from serial, read at 60fps
+
+  // Diagnostics for the Setup Wizard: every reading with its arrival time, plus line counters
+  const sampleBufferRef = useRef(null);
+  if (sampleBufferRef.current === null) sampleBufferRef.current = new SampleBuffer();
+  const serialStatsRef = useRef(null);
+  if (serialStatsRef.current === null) serialStatsRef.current = createSerialStats();
+
+  // Pretend mode follows the wizard's instructions ('wave' = original demo signal)
+  const simIntentRef = useRef('wave');
+  const setSimIntent = useCallback((intent) => { simIntentRef.current = intent; }, []);
 
   // 3D Visualizer State Refs
   const [engineState, setEngineState] = useState('loading');
@@ -135,8 +150,7 @@ export default function App() {
     const buf = historyRef.current;
     buf.copyWithin(0, 1);
     buf[99] = processedValue;
-    if (isCalibrating) calDataRef.current.push(rawSensorValue);
-  }, [rawSensorValue, processedValue, isCalibrating]);
+  }, [rawSensorValue, processedValue]);
 
   useEffect(() => {
     latestSignalRef.current = { value: processedValue, color: activeColorHex, isFlexing };
@@ -521,55 +535,90 @@ export default function App() {
     };
   }, []);
 
-  const calibrate = () => {
-    setIsCalibrating(true);
-    calDataRef.current = [];
-    setTimeout(() => {
-      setIsCalibrating(false);
-      const data = calDataRef.current;
-      if (data.length === 0) return;
-      const mean = data.reduce((a, b) => a + b, 0) / data.length;
-      const variance = data.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / data.length;
-      const computedFloor = mean + 2 * Math.sqrt(variance);
-      setNoiseFloor(Math.round(computedFloor));
-      setEmgFloor(Math.min(SENSOR_MAX - 50, Math.round(computedFloor * 1.5)));
-    }, 3000);
+  // Apply settings from the Setup Wizard (a partial update is fine, e.g. just emgCeil)
+  const applyCalibration = useCallback(({ settings = {}, ...summary }) => {
+    if (settings.noiseFloor != null) setNoiseFloor(settings.noiseFloor);
+    if (settings.gain != null) setGain(settings.gain);
+    if (settings.emgFloor != null) setEmgFloor(settings.emgFloor);
+    if (settings.emgCeil != null) setEmgCeil(settings.emgCeil);
+    setCalibration(prev => ({ ...prev, ...summary, settings: { ...prev?.settings, ...settings } }));
+  }, []);
+
+  const closePort = async () => {
+    keepReadingRef.current = false;
+    try { if (readerRef.current) await readerRef.current.cancel(); } catch { /* already released */ }
+    // Wait (briefly) for the pipe to unwind so the port can actually close
+    await Promise.race([pipeDoneRef.current, new Promise(r => setTimeout(r, 500))]);
+    try { if (portRef.current) await portRef.current.close(); } catch { /* already closed */ }
+    readerRef.current = null;
+    portRef.current = null;
   };
 
   const readLoop = async (reader) => {
     let buffer = '';
+    const stats = serialStatsRef.current;
+    const samples = sampleBufferRef.current;
     while (keepReadingRef.current) {
       try {
         const { value, done } = await reader.read();
         if (done) break;
+        const now = performance.now();
+        stats.bytes += value.length;
+        stats.lastByteAt = now;
+        stats.recentText = (stats.recentText + value).slice(-256);
         buffer += value;
         const lines = buffer.split('\n');
         buffer = lines.pop();
-        // Only use the last complete line in the batch to stay current
-        for (let i = lines.length - 1; i >= 0; i--) {
-          const match = lines[i].match(/Sensor:\s*(\d+)/);
-          if (match) { latestRawRef.current = parseInt(match[1], 10); break; }
+        if (buffer.length > 1024) buffer = buffer.slice(-1024); // junk with no newlines must not pile up
+        for (const line of lines) {
+          stats.lines++;
+          const match = line.match(/Sensor:\s*(\d+)/);
+          if (match) {
+            const v = parseInt(match[1], 10);
+            stats.parsed++;
+            stats.lastLine = line.trim();
+            samples.push(now, v);
+            latestRawRef.current = v; // last one in the batch wins, to stay current
+          } else if (line.trim()) {
+            stats.unparsed++;
+            stats.lastBadLine = line.trim();
+          }
         }
       } catch (error) {
         console.error('Serial Read Error:', error);
+        stats.readError = error;
+        if (keepReadingRef.current) {
+          // Unplugged or reset mid-session
+          await closePort();
+          setIsConnected(false);
+          setRawSensorValue(0);
+          setConnectIssue({ kind: 'lost', message: error.message });
+        }
         break;
       }
     }
   };
 
   const connectSerial = async () => {
-    setErrorMessage('');
+    setConnectIssue(null);
+    if (!SERIAL_SUPPORTED) {
+      setConnectIssue({ kind: 'unsupported', message: '' });
+      return;
+    }
     try {
       const port = await navigator.serial.requestPort();
       await port.open({ baudRate: 9600, bufferSize: 64 });
       portRef.current = port;
-      
+      setPortLabel(describePort(port.getInfo ? port.getInfo() : null));
+      serialStatsRef.current = createSerialStats();
+      sampleBufferRef.current.clear();
+
       setIsConnected(true);
       setIsSimulating(false);
       keepReadingRef.current = true;
-      
+
       const textDecoder = new TextDecoderStream();
-      port.readable.pipeTo(textDecoder.writable);
+      pipeDoneRef.current = port.readable.pipeTo(textDecoder.writable).catch(() => {});
       const reader = textDecoder.readable.getReader();
       readerRef.current = reader;
 
@@ -585,36 +634,38 @@ export default function App() {
 
     } catch (error) {
       console.error('Serial Connection failed:', error);
+      if (portRef.current) await closePort();
       setIsConnected(false);
-
-      if (error.name === 'SecurityError' || error.message.includes('permissions policy')) {
-        setErrorMessage("Oops! USB isn't allowed here right now. Copy this code to a local project to use real hardware!");
-      } else if (error.name === 'NotFoundError') {
-        setErrorMessage("No device selected! Try again.");
-      } else {
-        setErrorMessage(`Uh oh! USB Error: ${error.message}`);
-      }
+      setConnectIssue(classifyConnectionError(error));
     }
   };
 
   const disconnectSerial = async () => {
-    keepReadingRef.current = false;
-    try { if (readerRef.current) await readerRef.current.cancel(); } catch (e) {}
+    await closePort();
     setIsConnected(false);
     setRawSensorValue(0);
   };
 
   useEffect(() => {
-    let simInterval;
-    if (isSimulating) {
-      let time = 0;
-      simInterval = setInterval(() => {
-        time += 0.05;
-        const base = Math.sin(time) * 400 + 450; 
-        const noise = Math.random() * 80; 
-        setRawSensorValue(Math.max(0, Math.min(SENSOR_MAX, Math.floor(base + noise))));
-      }, 50);
-    }
+    if (!isSimulating) return;
+    const stats = createSerialStats();
+    serialStatsRef.current = stats;
+    const samples = sampleBufferRef.current;
+    samples.clear();
+    const simState = { level: 55 };
+    let time = 0;
+    const simInterval = setInterval(() => {
+      time += 0.05;
+      const v = simulateReading(simIntentRef.current, time, simState);
+      const now = performance.now();
+      stats.bytes += 12;
+      stats.lines++;
+      stats.parsed++;
+      stats.lastByteAt = now;
+      stats.lastLine = `Sensor: ${v}`;
+      samples.push(now, v);
+      setRawSensorValue(v);
+    }, 50);
     return () => clearInterval(simInterval);
   }, [isSimulating]);
 
@@ -639,13 +690,18 @@ export default function App() {
           </h1>
         </div>
 
-        {errorMessage && (
+        {connectIssue && !showWizard && (
           <div className="bg-red-100 border-4 border-red-400 p-4 rounded-3xl flex items-center space-x-3 shadow-lg shrink-0">
             <AlertCircle className="w-8 h-8 text-red-500 shrink-0" />
-            <div>
-              <h3 className="font-bold text-red-600 text-lg">Connection Blocked!</h3>
-              <p className="text-red-500 text-sm font-medium">{errorMessage}</p>
+            <div className="flex-1">
+              <h3 className="font-bold text-red-600 text-lg">{ISSUES[connectIssue.kind].title}</h3>
+              <p className="text-red-500 text-sm font-medium">
+                {connectIssue.kind === 'usb-error' ? connectIssue.message : ISSUES[connectIssue.kind].detail}
+              </p>
             </div>
+            <button onClick={() => setShowWizard(true)} className="py-2 px-4 bg-white text-red-600 text-sm font-black rounded-2xl border-2 border-red-300 hover:bg-red-50 shrink-0">
+              Help me fix it
+            </button>
           </div>
         )}
 
@@ -665,7 +721,7 @@ export default function App() {
               </h2>
               <div className="flex gap-2">
                 {!isConnected ? (
-                  <button onClick={connectSerial} disabled={!isSupported}
+                  <button onClick={connectSerial} disabled={!SERIAL_SUPPORTED}
                     className="flex-1 py-2.5 px-3 rounded-2xl flex items-center justify-center space-x-2 text-sm font-bold transition-transform hover:scale-105 active:scale-95 bg-emerald-500 text-white shadow-[0_4px_0_rgb(16,185,129)] disabled:opacity-50 disabled:transform-none"
                   >
                     <Usb className="w-4 h-4" /> <span>Connect</span>
@@ -677,21 +733,23 @@ export default function App() {
                     <XCircle className="w-4 h-4" /> <span>Disconnect</span>
                   </button>
                 )}
-                <button onClick={() => { if(!isConnected) { setErrorMessage(''); setIsSimulating(!isSimulating); } }} disabled={isConnected}
+                <button onClick={() => { if(!isConnected) { setConnectIssue(null); setIsSimulating(!isSimulating); } }} disabled={isConnected}
                   className={`flex-1 py-2.5 px-3 rounded-2xl flex items-center justify-center space-x-2 text-sm font-bold transition-transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:transform-none ${isSimulating ? 'bg-amber-400 text-slate-900 shadow-[0_4px_0_rgb(217,119,6)]' : 'bg-slate-200 text-slate-700 shadow-[0_4px_0_rgb(203,213,225)]'}`}
                 >
                   <Activity className="w-4 h-4" /> <span>Pretend</span>
                 </button>
               </div>
 
-              <div className="flex items-center gap-3 bg-sky-50 p-2.5 rounded-2xl border-2 border-sky-100">
-                <button onClick={calibrate} disabled={isCalibrating || (!isConnected && !isSimulating)}
-                  className="py-2 px-3 bg-sky-500 hover:bg-sky-400 disabled:bg-slate-300 text-white text-xs font-black rounded-xl shadow-[0_4px_0_rgb(14,165,233)] disabled:shadow-[0_4px_0_rgb(148,163,184)] transition-all flex items-center gap-2 active:translate-y-1 active:shadow-none"
+              <div className="bg-sky-50 p-2.5 rounded-2xl border-2 border-sky-100 space-y-2">
+                <button onClick={() => setShowWizard(true)}
+                  className="w-full py-2 px-3 bg-sky-500 hover:bg-sky-400 text-white text-sm font-black rounded-xl shadow-[0_4px_0_rgb(2,132,199)] transition-all flex items-center justify-center gap-2 active:translate-y-1 active:shadow-none"
                 >
-                  <Crosshair className="w-4 h-4" /> FIND REST
+                  <Compass className="w-4 h-4" /> SETUP WIZARD
                 </button>
-                <div className="text-xs font-bold text-sky-600">
-                  {isCalibrating ? "Relax..." : `Noise: ${noiseFloor}`}
+                <div className={`text-xs font-bold text-center ${calibration ? 'text-emerald-600' : 'text-amber-600'}`}>
+                  {calibration
+                    ? `${calibration.quality === 'great' ? '✅' : '👍'} Calibrated · rest ${calibration.rest.mean} · squeeze ${calibration.flexPeak}`
+                    : '⚠️ Not calibrated yet'}
                 </div>
               </div>
             </div>
@@ -1035,6 +1093,30 @@ export default function App() {
         </div>
 
       </div>
+
+      {showWizard && (
+        <CalibrationWizard
+          onClose={() => setShowWizard(false)}
+          isSupported={SERIAL_SUPPORTED}
+          isConnected={isConnected}
+          isSimulating={isSimulating}
+          portLabel={portLabel}
+          connectIssue={connectIssue}
+          onConnect={connectSerial}
+          onPretend={() => { setConnectIssue(null); setIsSimulating(true); }}
+          bufferRef={sampleBufferRef}
+          statsRef={serialStatsRef}
+          setSimIntent={setSimIntent}
+          rawValue={rawSensorValue}
+          processedValue={processedValue}
+          keyIndex={instantKeyIndex}
+          keys={dynamicKeys}
+          noteIntervals={noteIntervals}
+          emgFloor={emgFloor}
+          emgCeil={emgCeil}
+          onApply={applyCalibration}
+        />
+      )}
     </div>
   );
 }
